@@ -30,26 +30,28 @@ def m1_rows(rows, e, min_lidar=10):
             continue
         y1 = float(r["y1"])
         b0 = fy * CAM_H / (y1 - cy) if y1 - cy > 5 else np.nan
-        out.append((r["gt_cls"], float(r["lidar_z"]), float(r[f"z_{e}"]), b0))
+        hy = float(r["g_z"]) if r.get("g_z") and r.get("cut_bottom") == "0" else float(r[f"z_{e}"])
+        out.append((r["gt_cls"], float(r["lidar_z"]), float(r[f"z_{e}"]), b0, hy))
     return out
 
 
 def table(name, data):
     print(f"\n{name}")
-    print(f"{'class':7s} {'range m':8s} {'n':>5s} | {'abs err m':>9s} {'abs rel':>8s} {'bias':>7s} {'d<1.25':>7s} | B0: {'abs rel':>8s} {'bias':>7s}")
+    print(f"{'class':7s} {'range m':8s} {'n':>5s} | depth: {'abs err m':>9s} {'abs rel':>8s} {'bias':>7s} {'d<1.25':>7s} | B0: {'abs rel':>8s} {'bias':>7s} | hybrid: {'abs rel':>8s} {'bias':>7s}")
     for c in ("car", "person"):
         for lo, hi in BINS:
             s = [x for x in data if x[0] == c and lo <= x[1] < hi]
             if len(s) < 5:
                 continue
             L = np.array([x[1] for x in s]); Z = np.array([x[2] for x in s]); B = np.array([x[3] for x in s])
+            Hy = np.array([x[4] for x in s]); hrel = (Hy - L) / L
             rel = (Z - L) / L
             ok = np.isfinite(B)
             brel = (B[ok] - L[ok]) / L[ok]
             d1 = np.mean(np.maximum(Z / L, L / Z) < 1.25)
             print(f"{c:7s} {lo:>3d}-{hi:<4d} {len(s):5d} | {np.median(np.abs(Z - L)):9.2f} {np.median(np.abs(rel)):8.1%} "
                   f"{np.median(rel):+7.1%} {d1:7.1%} | {np.median(np.abs(brel)) if ok.any() else np.nan:8.1%} "
-                  f"{np.median(brel) if ok.any() else np.nan:+7.1%}")
+                  f"{np.median(brel) if ok.any() else np.nan:+7.1%} | {np.median(np.abs(hrel)):8.1%} {np.median(hrel):+7.1%}")
 
 
 if __name__ == "__main__":

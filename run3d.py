@@ -35,6 +35,57 @@ def match(dets, gts):
     return out
 
 
+def road_plane(d, union, K, rng, n=3000, iters=200, tol=0.08, max_z=30.0):
+    """Road plane from the depth map: pixels below the horizon outside all detection masks, RANSAC with the normal
+    within 25 deg of the camera's vertical, least squares on inliers. Returns (n, d0) with n pointing up (n_y < 0)
+    and d0 = camera height above the road (m), or None."""
+    H, W = d.shape
+    fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+    ys, xs = np.nonzero(~union[int(cy) + 30:, :])
+    ys = ys + int(cy) + 30
+    if len(ys) < 100:
+        return None
+    k = rng.choice(len(ys), min(n, len(ys)), replace=False)
+    ys, xs = ys[k], xs[k]
+    z = d[ys, xs]
+    ok = np.isfinite(z) & (z > 0.5) & (z < max_z)
+    P = np.stack([(xs[ok] - cx) * z[ok] / fx, (ys[ok] - cy) * z[ok] / fy, z[ok]], 1)
+    if len(P) < 100:
+        return None
+    best, bn = None, 0
+    for _ in range(iters):
+        a, b, c = P[rng.choice(len(P), 3, replace=False)]
+        nv = np.cross(b - a, c - a)
+        nn = np.linalg.norm(nv)
+        if nn < 1e-9:
+            continue
+        nv = nv / nn
+        if abs(nv[1]) < np.cos(np.radians(25)):
+            continue
+        inl = np.abs(P @ nv - nv @ a) < tol
+        if inl.sum() > bn:
+            bn, best = inl.sum(), inl
+    if best is None or bn < 50:
+        return None
+    Q = P[best]
+    c0 = Q.mean(0)
+    nv = np.linalg.svd(Q - c0, full_matrices=False)[2][-1]
+    if nv[1] > 0:
+        nv = -nv
+    return nv, -nv @ c0
+
+
+def contact(plane, u, v, K):
+    """Where the ray through pixel (u, v) hits the road plane: (x, z) in camera-2 frame, or None."""
+    nv, d0 = plane
+    r = np.array([(u - K[0, 2]) / K[0, 0], (v - K[1, 2]) / K[1, 1], 1.0])
+    den = nv @ r
+    if den >= -1e-6:
+        return None
+    t = -d0 / den
+    return t * r[0], t * r[2]
+
+
 def depth_map(dep, img, variant, imgsz):
     H, W = img.shape[:2]
     src = cv2.resize(img, (imgsz, imgsz), interpolation=cv2.INTER_AREA) if variant == "stretch" else img
@@ -62,9 +113,11 @@ def main():
     dep = None if a.depth_dir else YOLO(a.depth, task="depth")
     cols = ["drive", "frame", "det", "track", "cls", "conf", "x0", "y0", "x1", "y1"]
     cols += [f"{q}_{e}" for e in EROSIONS for q in ("n", "z", "x", "y")]
+    cols += ["cam_h", "g_x", "g_z", "cut_bottom"]
     cols += ["gt_tid", "gt_cls", "gt_type", "iou", "occ", "trunc", "gt_x", "gt_y", "gt_z", "gt_h", "gt_w", "gt_l",
              "lidar_n", "lidar_z"]
     t0, nrow = time.time(), 0
+    rng = np.random.default_rng(0)
     kernels = {e: cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * e + 1, 2 * e + 1)) for e in EROSIONS if e}
     with open(a.out, "w", newline="") as fo:
         w = csv.DictWriter(fo, cols)
@@ -98,6 +151,8 @@ def main():
                 masks = r.masks.data.cpu().numpy().astype(np.uint8)
                 ids = r.boxes.id.cpu().numpy().astype(int) if r.boxes.id is not None else [-1] * len(boxes)
                 m = match([tuple(b) for b in boxes], gb)
+                union = cv2.dilate(masks.max(0), np.ones((9, 9), np.uint8)).astype(bool)
+                plane = road_plane(d, union, K, rng)
                 for i, b in enumerate(boxes):
                     row = {"drive": n, "frame": f, "det": i, "track": int(ids[i]), "cls": COCO[int(r.boxes.cls[i])],
                            "conf": round(float(r.boxes.conf[i]), 3),
@@ -115,6 +170,12 @@ def main():
                         row.update({f"n_{e}": len(z), f"z_{e}": round(float(np.median(z)), 3),
                                     f"x_{e}": round(float(np.median((xs - cx) * z / fx)), 3),
                                     f"y_{e}": round(float(np.median((ys - cy) * z / fy)), 3)})
+                    if plane is not None:
+                        g = contact(plane, (b[0] + b[2]) / 2, b[3], K)
+                        row.update({"cam_h": round(float(plane[1]), 3)})
+                        if g is not None:
+                            row.update({"g_x": round(float(g[0]), 3), "g_z": round(float(g[1]), 3)})
+                    row["cut_bottom"] = int(b[3] >= H - 3)
                     if i in m:
                         j, v = m[i]
                         o = gts[j]
