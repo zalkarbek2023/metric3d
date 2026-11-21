@@ -1,0 +1,6 @@
+# latency3d.py (22.11 ~01:20 PC time), RTX 5060 Ti, TensorRT FP16 engines, 150 timed frames each from val 0086 and 0029 (after 20 warm-up)
+NVIDIA GeForce RTX 5060 Ti  300 KITTI val frames 1242x375 (0086 0029), seg 640 / depth 768, FP16 engines, objects per frame median 1 (max 4)
+seg+track all frames median    8.2 ms  p95    8.9 ms  |  frames with objects (202) median    8.5 ms  p95    9.0 ms
+depth     all frames median    6.7 ms  p95    7.3 ms  |  frames with objects (202) median    6.7 ms  p95    7.3 ms
+3d        all frames median    7.0 ms  p95    9.4 ms  |  frames with objects (202) median    8.2 ms  p95    9.4 ms
+total     all frames median   22.3 ms  p95   24.9 ms  |  frames with objects (202) median   23.5 ms  p95   25.0 ms

@@ -25,7 +25,7 @@ for n in a.drives:
     rng = np.random.default_rng(0)
     img_dir = os.path.join(kitti.drive_dir(n), "image_02", "data")
     for k, fn in enumerate(sorted(os.listdir(img_dir))):
-        if len(ndet) >= a.n:
+        if k >= 20 + a.n // len(a.drives):  # the same number of timed frames from every drive
             break
         img = cv2.imread(os.path.join(img_dir, fn))
         torch.cuda.synchronize(); t0 = time.perf_counter()
@@ -54,5 +54,8 @@ for n in a.drives:
             ndet.append(m)
 print(f"{torch.cuda.get_device_name()}  {len(ndet)} KITTI val frames 1242x375 ({' '.join(a.drives)}), seg 640 / depth 768, "
       f"FP16 engines, objects per frame median {np.median(ndet):.0f} (max {max(ndet)})")
+has = np.array(ndet) > 0
 for key, v in T.items():
-    print(f"{key:9s} median {np.median(v):6.1f} ms   p95 {np.percentile(v, 95):6.1f} ms")
+    v = np.array(v)
+    print(f"{key:9s} all frames median {np.median(v):6.1f} ms  p95 {np.percentile(v, 95):6.1f} ms  |  "
+          f"frames with objects ({has.sum()}) median {np.median(v[has]):6.1f} ms  p95 {np.percentile(v[has], 95):6.1f} ms")
