@@ -78,6 +78,15 @@ def poses(n, cal):
     return out
 
 
+def times(n):
+    """Capture time (s from the drive's first frame) of every image_02 frame."""
+    out = []
+    for line in open(os.path.join(drive_dir(n), "image_02", "timestamps.txt")):
+        hh, mm, ss = line.split()[1].split(":")
+        out.append(int(hh) * 3600 + int(mm) * 60 + float(ss))
+    return np.array(out) - out[0]
+
+
 def _box_corners(h, w, l):
     x = np.array([-l, -l, l, l, -l, -l, l, l]) / 2
     y = np.array([w, -w, -w, w, w, -w, -w, w]) / 2
