@@ -1,0 +1,91 @@
+
+M1 surface distance - data/val6_stretch.csv (erosion 2 px, depth x1)
+class   range m      n | depth: abs err m  abs rel    bias  d<1.25 | B0:  abs rel    bias | hybrid:  abs rel    bias
+car       0-10     482 |      0.37     5.2%   +3.8%   90.7% |    14.3%  +11.7% |     9.4%   +8.0%
+car      10-20     874 |      0.74     5.0%   +3.2%   93.4% |     8.8%   -6.2% |     4.3%   +0.5%
+car      20-40    1173 |      2.50     8.8%   +5.6%   86.6% |    10.7%   -8.5% |     5.6%   +0.1%
+car      40-80     331 |      3.09     6.8%   -0.1%   91.2% |    14.6%  -12.2% |     7.4%   -2.7%
+car       0-80    2860 |      1.16     6.5%   +3.8%   89.9% |    11.3%   -6.5% |     5.9%   +1.1%
+person   10-20      33 |      1.29     7.3%   +4.7%  100.0% |     2.7%   +2.7% |     3.3%   +0.9%
+person   20-40      46 |      4.22    17.0%   -1.7%   67.4% |     8.9%   +8.9% |     7.6%   +5.7%
+person    0-80      79 |      2.08    10.9%   +2.1%   81.0% |     5.9%   +4.7% |     5.8%   +3.2%
+
+M2 tuning: median centre error (m) over 0-80 m vs r_class
+method  class       n |  0.00  0.25  0.50  0.75  1.00  1.25  1.50  1.75  2.00  2.25  2.50  2.75  3.00
+depth   car      3244 |  1.65  1.55  1.47  1.46  1.47  1.51  1.59  1.71  1.86  2.01  2.16  2.34  2.54  -> r = 0.75
+depth   person     79 |  2.30  2.38  2.53  2.64  2.88  3.13  3.23  3.41  3.47  3.72  3.95  4.16  4.13  -> r = 0.0
+hybrid  car      3244 |  1.76  1.60  1.49  1.38  1.35  1.36  1.37  1.40  1.50  1.64  1.79  1.97  2.17  -> r = 1.0
+hybrid  person     79 |  1.25  1.43  1.64  1.85  1.92  2.11  2.30  2.47  2.69  2.94  3.19  3.44  3.65  -> r = 0.0
+b0      car      3244 |  3.32  3.10  2.90  2.76  2.65  2.50  2.37  2.29  2.21  2.24  2.26  2.32  2.39  -> r = 2.0
+b0      person     79 |  1.45  1.63  1.72  1.76  1.89  2.14  2.39  2.64  2.89  3.14  3.39  3.64  3.89  -> r = 0.0
+
+M2 ground-plane centre error (m) - data/val6_stretch.csv (erosion 2 px, depth x1); r_class = {'depth': {'car': 0.75, 'person': 0.0}, 'hybrid': {'car': 1.0, 'person': 0.0}, 'b0': {'car': 2.0, 'person': 0.0}}
+class   range m      n | depth:   med   p90 | hybrid:   med   p90 | b0:   med   p90
+car       0-10     350 | depth:  0.74  1.38 | hybrid:  0.63  1.71 | b0:  1.75  3.90
+car      10-20     819 | depth:  0.68  2.20 | hybrid:  0.67  1.83 | b0:  1.11  2.35
+car      20-40    1265 | depth:  2.07  7.64 | hybrid:  1.54  4.58 | b0:  2.53  7.16
+car      40-80     810 | depth:  3.81 11.89 | hybrid:  4.45 13.82 | b0:  6.86 17.87
+car       0-80    3244 | depth:  1.46  7.57 | hybrid:  1.35  6.85 | b0:  2.21  9.70
+person   10-20      24 | depth:  1.50  2.40 | hybrid:  0.54  1.34 | b0:  0.50  0.91
+person   20-40      55 | depth:  3.69  7.78 | hybrid:  1.52  5.99 | b0:  2.22  6.38
+person    0-80      79 | depth:  2.30  7.42 | hybrid:  1.25  5.35 | b0:  1.45  5.32
+
+M3 speed (window 1 s, fit lsq, detections in >= 80% of frames, GT within 40 m) - data/val6_stretch.csv (erosion 2 px, depth x1)
+car: 2125 windows, 67 tracks, GT speed median 0.6 km/h, moving 27% (answering 'stopped' always: acc 72.7%)
+  depth   abs err median   3.9 km/h [95% CI 2.9-5.5], p90  17.9, bias  +3.0, moving/stopped acc 65.5%
+  hybrid  abs err median   3.2 km/h [95% CI 2.3-4.5], p90  13.6, bias  +2.3, moving/stopped acc 70.6%
+  b0      abs err median   4.0 km/h [95% CI 3.1-5.8], p90  15.9, bias  +2.7, moving/stopped acc 66.2%
+person: 68 windows, 3 tracks, GT speed median 5.0 km/h, moving 51% (answering 'stopped' always: acc 48.5%)
+  depth   abs err median   2.5 km/h [95% CI 1.6-13.7], p90  15.4, bias  +2.4, moving/stopped acc 58.8%
+  hybrid  abs err median   1.9 km/h [95% CI 1.2-16.2], p90  26.8, bias  +1.8, moving/stopped acc 30.9%
+  b0      abs err median   2.0 km/h [95% CI 1.4-20.2], p90  30.5, bias  +0.3, moving/stopped acc 36.8%
+
+M3 speed (window 1 s, fit theilsen, detections in >= 80% of frames, GT within 40 m) - data/val6_stretch.csv (erosion 2 px, depth x1)
+car: 2125 windows, 67 tracks, GT speed median 0.6 km/h, moving 27% (answering 'stopped' always: acc 72.7%)
+  depth   abs err median   3.8 km/h [95% CI 2.8-5.3], p90  17.0, bias  +3.0, moving/stopped acc 66.4%
+  hybrid  abs err median   3.0 km/h [95% CI 2.3-4.1], p90  12.7, bias  +2.2, moving/stopped acc 72.2%
+  b0      abs err median   3.9 km/h [95% CI 3.1-5.6], p90  15.9, bias  +2.7, moving/stopped acc 66.6%
+person: 68 windows, 3 tracks, GT speed median 5.0 km/h, moving 51% (answering 'stopped' always: acc 48.5%)
+  depth   abs err median   2.4 km/h [95% CI 1.6-11.4], p90  14.5, bias  +2.3, moving/stopped acc 54.4%
+  hybrid  abs err median   1.9 km/h [95% CI 1.4-12.7], p90  26.0, bias  +1.5, moving/stopped acc 38.2%
+  b0      abs err median   2.0 km/h [95% CI 1.3-20.2], p90  25.9, bias  +0.3, moving/stopped acc 36.8%
+
+M3 speed (window 2 s, fit lsq, detections in >= 80% of frames, GT within 40 m) - data/val6_stretch.csv (erosion 2 px, depth x1)
+car: 1839 windows, 50 tracks, GT speed median 0.5 km/h, moving 29% (answering 'stopped' always: acc 71.2%)
+  depth   abs err median   2.8 km/h [95% CI 1.9-4.5], p90  11.4, bias  +2.3, moving/stopped acc 73.2%
+  hybrid  abs err median   2.1 km/h [95% CI 1.4-3.4], p90  10.2, bias  +1.4, moving/stopped acc 81.2%
+  b0      abs err median   3.0 km/h [95% CI 2.3-4.7], p90  14.5, bias  +2.2, moving/stopped acc 74.2%
+person: 47 windows, 3 tracks, GT speed median 5.2 km/h, moving 68% (answering 'stopped' always: acc 31.9%)
+  depth   abs err median   1.5 km/h [95% CI 1.1-11.9], p90   3.6, bias  +0.7, moving/stopped acc 66.0%
+  hybrid  abs err median   2.0 km/h [95% CI 0.9-23.0], p90  19.9, bias  +2.0, moving/stopped acc 34.0%
+  b0      abs err median   1.8 km/h [95% CI 1.6-19.8], p90  20.3, bias  +1.1, moving/stopped acc 25.5%
+
+M3 speed (window 2 s, fit theilsen, detections in >= 80% of frames, GT within 40 m) - data/val6_stretch.csv (erosion 2 px, depth x1)
+car: 1839 windows, 50 tracks, GT speed median 0.5 km/h, moving 29% (answering 'stopped' always: acc 71.2%)
+  depth   abs err median   2.7 km/h [95% CI 1.8-4.2], p90  11.0, bias  +2.2, moving/stopped acc 74.7%
+  hybrid  abs err median   2.0 km/h [95% CI 1.4-3.1], p90   8.9, bias  +1.3, moving/stopped acc 82.8%
+  b0      abs err median   3.0 km/h [95% CI 2.3-4.6], p90  13.8, bias  +2.2, moving/stopped acc 74.3%
+person: 47 windows, 3 tracks, GT speed median 5.2 km/h, moving 68% (answering 'stopped' always: acc 31.9%)
+  depth   abs err median   1.7 km/h [95% CI 1.2-3.3], p90   2.8, bias  +0.9, moving/stopped acc 70.2%
+  hybrid  abs err median   1.4 km/h [95% CI 0.8-18.0], p90  18.4, bias  +1.4, moving/stopped acc 34.0%
+  b0      abs err median   1.8 km/h [95% CI 1.6-19.7], p90  20.2, bias  +1.7, moving/stopped acc 23.4%
+
+M3 speed (window 3 s, fit lsq, detections in >= 80% of frames, GT within 40 m) - data/val6_stretch.csv (erosion 2 px, depth x1)
+car: 1584 windows, 38 tracks, GT speed median 0.5 km/h, moving 29% (answering 'stopped' always: acc 70.5%)
+  depth   abs err median   2.2 km/h [95% CI 1.4-4.0], p90   8.6, bias  +1.9, moving/stopped acc 77.6%
+  hybrid  abs err median   1.7 km/h [95% CI 1.2-3.0], p90   8.7, bias  +1.4, moving/stopped acc 83.9%
+  b0      abs err median   2.3 km/h [95% CI 1.7-3.7], p90  12.8, bias  +1.7, moving/stopped acc 79.5%
+person: 27 windows, 2 tracks, GT speed median 5.3 km/h, moving 89% (answering 'stopped' always: acc 11.1%)
+  depth   abs err median   0.8 km/h [95% CI 0.8-1.2], p90   1.4, bias  +0.0, moving/stopped acc 81.5%
+  hybrid  abs err median   0.8 km/h [95% CI 0.8-14.0], p90   6.7, bias  +0.5, moving/stopped acc 48.1%
+  b0      abs err median   1.4 km/h [95% CI 1.3-15.1], p90   6.8, bias  -0.6, moving/stopped acc 37.0%
+
+M3 speed (window 3 s, fit theilsen, detections in >= 80% of frames, GT within 40 m) - data/val6_stretch.csv (erosion 2 px, depth x1)
+car: 1584 windows, 38 tracks, GT speed median 0.5 km/h, moving 29% (answering 'stopped' always: acc 70.5%)
+  depth   abs err median   2.2 km/h [95% CI 1.4-3.8], p90   8.2, bias  +1.7, moving/stopped acc 77.7%
+  hybrid  abs err median   1.7 km/h [95% CI 1.2-2.9], p90   7.5, bias  +1.3, moving/stopped acc 85.2%
+  b0      abs err median   2.2 km/h [95% CI 1.7-3.9], p90  12.3, bias  +1.6, moving/stopped acc 79.5%
+person: 27 windows, 2 tracks, GT speed median 5.3 km/h, moving 89% (answering 'stopped' always: acc 11.1%)
+  depth   abs err median   0.8 km/h [95% CI 0.8-0.8], p90   1.2, bias  +0.2, moving/stopped acc 70.4%
+  hybrid  abs err median   0.8 km/h [95% CI 0.7-13.2], p90   6.3, bias  +0.2, moving/stopped acc 48.1%
+  b0      abs err median   1.5 km/h [95% CI 1.5-15.2], p90   6.6, bias  -1.1, moving/stopped acc 29.6%

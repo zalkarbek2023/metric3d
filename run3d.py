@@ -117,13 +117,13 @@ def main():
     cols += ["gt_tid", "gt_cls", "gt_type", "iou", "occ", "trunc", "gt_x", "gt_y", "gt_z", "gt_h", "gt_w", "gt_l",
              "lidar_n", "lidar_z"]
     t0, nrow = time.time(), 0
-    rng = np.random.default_rng(0)
     kernels = {e: cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * e + 1, 2 * e + 1)) for e in EROSIONS if e}
     with open(a.out, "w", newline="") as fo:
         w = csv.DictWriter(fo, cols)
         w.writeheader()
         for n in a.drives:
             det = YOLO(a.det, task="segment")  # fresh tracker state per drive
+            rng = np.random.default_rng(0)  # RANSAC seed per drive: a drive's rows do not depend on the drive order
             tr = kitti.tracklets(n, cal)
             img_dir = os.path.join(kitti.drive_dir(n), "image_02", "data")
             frames = sorted(int(f[:-4]) for f in os.listdir(img_dir))
