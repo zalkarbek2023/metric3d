@@ -1,7 +1,9 @@
 // "One camera -> every car in metres": Ultralytics YOLO26x-seg + YOLO26x-depth (TensorRT FP16) on KITTI raw drive
-// 0009 (a pre-registered test drive the depth model never saw). Time freezes, the frame lifts into metric 3D, the
-// depth model finds the road (camera height), every car gets a ground position, then the laser scanner and the human
-// 3D labels check it; time runs on with speeds. All positions/speeds are the exact test-run values (export.py).
+// 0009 (a pre-registered test drive the depth model never saw). The drive plays in real time (frames 230-425); while
+// it drives, the frame lifts into metric 3D, the depth model finds the road (camera height), every car gets a ground
+// position, the laser scanner and the human 3D labels check it, and crossing cars get speeds. Every frame's 3D sits in
+// one world through the car's pose, so parked cars stay put as we drive past. All positions/speeds are the exact
+// test-run values (export.py).
 import React, {CSSProperties, useEffect, useMemo, useState} from 'react';
 import {AbsoluteFill, Img, continueRender, delayRender, Easing, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ThreeCanvas} from '@remotion/three';
@@ -16,11 +18,11 @@ const mono = loadMono('normal', {weights: ['400', '600'], subsets: ['latin']});
 const SANS = onest.fontFamily, MONO = mono.fontFamily;
 
 export const FPS = 30;
-const TL = {lift: 3.0, road: 6.5, pins: 9.5, proof: 12.5, run: 17.5, res: 27.0, res2: 30.0, fail: 33.0, outro: 37.0, end: 41.0};
-// the first 0.4 s is a cover frame (X shows frame 0): the laser check at 15.8 s
-const COVER = 0.4, COVER_AT = 15.8;
+// story beats in seconds of drive time (drive frame = 230 + 10 s); crossing traffic starts at frame 360 = TL.run
+const TL = {lift: 2.6, road: 5.0, pins: 7.5, proof: 10.0, run: 13.0, res: 20.0, res2: 23.0, fail: 26.0, outro: 30.0, end: 34.0};
+// the first 0.4 s is a cover frame (X shows frame 0): the laser check
+const COVER = 0.4, COVER_AT = 13.9;
 export const TOTAL = Math.round((TL.end + COVER) * FPS);
-const FREEZE = 30;  // frame 330 of drive 0009
 const BG = '#05070C', TEXT = '#F4F1EA', DIM = '#8A929C', CAR = '#FF8A4C', PERSON = '#2ECC71', ROAD = '#3CC6C9', NV = '#76B900';
 // test numbers (TEST.md, run 2): centre error 0-80 m and speed error, all 11 test drives
 const RES = {cars: 523, hy: '1.2', b0: '2.0', kmh: '1.7', kmhB0: '3.0', ms: '23.5', drives: 11};
@@ -29,7 +31,7 @@ const REPO = 'github.com/zalkarbek2023/metric3d';
 type Obj = {det: number; track: number; cls: string; box: number[]; c: Record<'depth' | 'hybrid' | 'b0', number[]>;
   gt_tid: number | null; err?: Record<string, number>; kmh?: Record<string, number>; trail: number[][]};
 type GT = {tid: number; type: string; corners: number[][]; centre: number[]};
-type Frame = {k: number; frame: number; objects: Obj[]; gt: GT[]; plane: number[] | null};
+type Frame = {k: number; frame: number; objects: Obj[]; gt: GT[]; plane: number[] | null; pose: number[]};
 const D = SCENE as unknown as {size: number[]; K: number[][]; grid: number[]; grid_step: number; lidar_idx: number[][];
   frames: Frame[]; cam_h_true: number};
 const [IW, IH] = D.size;
@@ -43,8 +45,8 @@ const ramp = (s: number, a: number, b: number, e = OUT) => interpolate(s, [a, b]
 const win = (s: number, a: number, b: number, fade = 0.45) => ramp(s, a, a + fade) * (1 - ramp(s, b - fade, b, INOUT));
 const pad = (k: number) => String(k).padStart(3, '0');
 
-// drive time: 3 s of real driving, frozen at frame 330 for the 3D story, then real time again to frame 425
-const kAt = (s: number) => (s < TL.lift ? Math.min(FREEZE - 0.001, s * 10) : s < TL.run ? FREEZE : Math.min(NF - 1, FREEZE + (s - TL.run) * 10));
+// drive time: real time, one drive frame per 0.1 s, held on the last frame
+const kAt = (s: number) => Math.min(NF - 1, Math.max(0, s * 10));
 
 // camera-2 (x right, y down, z forward) -> three (x right, y up, z back)
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, -y, -z);
@@ -54,6 +56,46 @@ const groundY = (pl: number[] | null, x: number, z: number) => {
   const [nx, ny, nz, d0] = pl;
   return (d0 + nx * x + nz * z) / ny;  // y_cam = -(d0 + nx x + nz z) / ny ; three y = -y_cam
 };
+
+// ---------------------------------------------------------------- the drive in one world
+// world = three axes of camera-2 at the first exported frame; T[k] maps frame k's camera (three axes) into it
+const FLIP = new THREE.Matrix4().makeScale(1, -1, -1);
+const T = D.frames.map((fr) => {
+  const p = fr.pose;
+  const m = new THREE.Matrix4().set(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], 0, 0, 0, 1);
+  return FLIP.clone().multiply(m).multiply(FLIP);
+});
+const TP = T.map((m) => {
+  const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  m.decompose(p, q, sc);
+  return {p, q};
+});
+const yawOf = (m: THREE.Matrix4) => {
+  const f = new THREE.Vector3(0, 0, -1).transformDirection(m);
+  return Math.atan2(-f.x, -f.z);
+};
+// camera height from each frame's road plane, median over +-0.5 s
+const H_EST = D.frames.map((_, k) => {
+  const v = D.frames.slice(Math.max(0, k - 5), k + 6).map((f) => f.plane?.[3]).filter((x): x is number => x != null).sort((a, b) => a - b);
+  return v.length ? v[Math.floor(v.length / 2)] : D.cam_h_true;
+});
+type EgoPose = {m: THREE.Matrix4; pos: THREE.Vector3; yaw: number; h: number};
+// our car between two drive frames: position and heading only, so the virtual camera does not shake with pitch/roll
+const egoAt = (kf: number): EgoPose => {
+  const k = Math.min(NF - 1, Math.floor(kf)), k1 = Math.min(NF - 1, k + 1), al = Math.min(1, kf - k);
+  const pos = TP[k].p.clone().lerp(TP[k1].p, al);
+  const yaw = yawOf(T[k]) + (yawOf(T[k1]) - yawOf(T[k])) * al;
+  const h = H_EST[k] + (H_EST[k1] - H_EST[k]) * al;
+  return {m: new THREE.Matrix4().makeRotationY(yaw).setPosition(pos), pos, yaw, h};
+};
+// a car's ground point (x, z of frame k's camera-2) in the world
+const onGround = (k: number, x: number, z: number) => new THREE.Vector3(x, groundY(D.frames[k].plane, x, z), -z).applyMatrix4(T[k]);
+// first and last drive frame of every track: pins fade in and out instead of popping
+const SPAN = new Map<number, [number, number]>();
+D.frames.forEach((fr, k) => fr.objects.forEach((o) => {
+  const sp = SPAN.get(o.track);
+  SPAN.set(o.track, sp ? [sp[0], k] : [k, k]);
+}));
 
 // ---------------------------------------------------------------- assets
 type Assets = {depth: Uint16Array; lidar: Int16Array; photos: THREE.Texture[]};
@@ -76,6 +118,7 @@ function useAssets(): Assets | null {
   return a;
 }
 const labelCache = new Map<string, THREE.CanvasTexture>();
+const labelFrac = new Map<string, number>();  // width of the drawn plate / width of the sprite
 const label = (text: string, color: string) => {
   const key = text + color;
   let t = labelCache.get(key);
@@ -85,6 +128,7 @@ const label = (text: string, color: string) => {
     const g = c.getContext('2d')!;
     g.font = `600 56px ${MONO}`;
     const w = Math.min(620, g.measureText(text).width + 64);
+    labelFrac.set(key, w / 640);
     g.fillStyle = 'rgba(5,7,12,0.86)';
     g.beginPath(); g.roundRect((640 - w) / 2, 16, w, 96, 20); g.fill();
     g.fillStyle = color; g.fillRect((640 - w) / 2, 16, 12, 96);
@@ -97,7 +141,7 @@ const label = (text: string, color: string) => {
   return t;
 };
 
-// ---------------------------------------------------------------- camera path
+// ---------------------------------------------------------------- camera path (in our car's frame: it rides along)
 type Cam = {pos: THREE.Vector3; look: THREE.Vector3; hfov: number};
 const orbitAt = (target: THREE.Vector3, deg: number, r: number, h: number, hfov = 62): Cam => {
   const a = (deg * Math.PI) / 180;
@@ -112,8 +156,8 @@ const chase = (s: number): Cam => ({
 const mix = (a: Cam, b: Cam, t: number): Cam => ({pos: a.pos.clone().lerp(b.pos, t), look: a.look.clone().lerp(b.look, t), hfov: a.hfov + (b.hfov - a.hfov) * t});
 function camAt(s: number): Cam {
   if (s < TL.lift) return DASH;
-  if (s < TL.road) return mix(DASH, WIDE(-24 + 6 * ramp(s, 5.6, TL.road)), ramp(s, TL.lift + 0.2, 5.6, INOUT));
-  if (s < TL.pins) return mix(WIDE(-18), NEAR, ramp(s, TL.road, TL.road + 1.1, INOUT) * (1 - ramp(s, TL.pins - 0.5, TL.pins + 0.6, INOUT)));
+  if (s < TL.road) return mix(DASH, WIDE(-24 + 6 * ramp(s, TL.road - 0.6, TL.road)), ramp(s, TL.lift + 0.2, TL.road - 0.6, INOUT));
+  if (s < TL.pins) return mix(WIDE(-18), NEAR, ramp(s, TL.road, TL.road + 0.8, INOUT) * (1 - ramp(s, TL.pins - 1.0, TL.pins, INOUT)));
   if (s < TL.proof) return mix(WIDE(-18), WIDE(-10), ramp(s, TL.pins, TL.proof, INOUT));
   if (s < TL.run) return WIDE(-10 + 34 * ramp(s, TL.proof, TL.run, INOUT));
   if (s < 19.2) return mix(WIDE(24), chase(s), ramp(s, TL.run, 19.2, INOUT));
@@ -122,14 +166,20 @@ function camAt(s: number): Cam {
   c.pos.add(new THREE.Vector3(0, 4 * back, 5 * back));
   return c;
 }
+const toWorld = (c: Cam, ego: EgoPose): Cam => ({pos: c.pos.clone().applyMatrix4(ego.m), look: c.look.clone().applyMatrix4(ego.m), hfov: c.hfov});
 const vfovOf = (hfov: number, aspect: number) => (2 * Math.atan(Math.tan((hfov * Math.PI) / 360) / aspect) * 180) / Math.PI;
 
-const Rig: React.FC<{cam: Cam; aspect: number}> = ({cam, aspect}) => {
+// yoff > 0 moves the picture up by that fraction of the view (the bottom of the view sits under the text)
+const shiftView = (c: THREE.PerspectiveCamera, aspect: number, yoff: number) => {
+  if (yoff > 0) c.setViewOffset(1000 * aspect, 1000, 0, 1000 * yoff, 1000 * aspect, 1000);
+  else c.clearViewOffset();
+};
+const Rig: React.FC<{cam: Cam; aspect: number; yoff: number}> = ({cam, aspect, yoff}) => {
   const {camera} = useThree();
   const c = camera as THREE.PerspectiveCamera;
   c.fov = Math.min(100, vfovOf(cam.hfov, aspect));
   c.aspect = aspect; c.near = 0.1; c.far = 400;
-  c.position.copy(cam.pos); c.lookAt(cam.look); c.updateProjectionMatrix();
+  c.position.copy(cam.pos); c.lookAt(cam.look); shiftView(c, aspect, yoff); c.updateProjectionMatrix();
   return null;
 };
 
@@ -225,20 +275,21 @@ const Lidar: React.FC<{a: Assets; k: number; reveal: number; opacity: number; pr
   return <points geometry={geom} material={mat} frustumCulled={false} />;
 };
 
-// road plane of the frame: a grid patch on the plane + range rings, and the camera-height line
-const Road: React.FC<{pl: number[] | null; grid: number; height: number; s: number}> = ({pl, grid, height, s}) => {
-  const n = pl ? new THREE.Vector3(pl[0], -pl[1], -pl[2]).normalize() : new THREE.Vector3(0, 1, 0);
-  const d0 = pl ? pl[3] : D.cam_h_true;
-  const foot = n.clone().multiplyScalar(-d0);
-  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+// the road the depth model found: a grid at the estimated ground height that stays put in the world as we drive
+// (snapped to its 2 m cells), range rings that ride with our car, and the camera-height line
+const Road: React.FC<{ego: EgoPose; grid: number; height: number; s: number}> = ({ego, grid, height, s}) => {
+  const d0 = ego.h;
+  const gy = ego.pos.y - d0;
+  const ahead = new THREE.Vector3(-Math.sin(ego.yaw), 0, -Math.cos(ego.yaw)).multiplyScalar(30).add(ego.pos);
+  const snap = (v: number) => Math.round(v / 2) * 2;
   const gridObj = useMemo(() => new THREE.GridHelper(80, 40, ROAD, ROAD), []);
   (gridObj.material as THREE.Material).transparent = true;
   (gridObj.material as THREE.Material).opacity = 0.32 * grid;
   const grow = ramp(s, TL.road + 0.3, TL.road + 1.3);
   return (
     <>
-      <group position={foot} quaternion={q}>
-        <primitive object={gridObj} position={[0, 0.01, -30]} />
+      <primitive object={gridObj} position={[snap(ahead.x), gy + 0.01, snap(ahead.z)]} />
+      <group position={[ego.pos.x, gy, ego.pos.z]} rotation={[0, ego.yaw, 0]}>
         {[10, 20, 40].map((r) => (
           <mesh key={r} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
             <ringGeometry args={[r - 0.1, r + 0.1, 128, 1, Math.PI * 0.25, Math.PI * 0.5]} />
@@ -250,37 +301,36 @@ const Road: React.FC<{pl: number[] | null; grid: number; height: number; s: numb
             <spriteMaterial map={label(`${r} m`, ROAD)} transparent opacity={0.9 * grid} depthTest={false} />
           </sprite>
         ))}
+        {height > 0 && (
+          <>
+            <mesh position={[0, d0 * (1 - 0.5 * grow), 0]} scale={[1, grow, 1]}>
+              <cylinderGeometry args={[0.05, 0.05, d0, 12]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={height} />
+            </mesh>
+            <mesh position={[0, d0, 0]}><sphereGeometry args={[0.16, 20, 14]} /><meshBasicMaterial color="#FFFFFF" transparent opacity={height} /></mesh>
+            <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.3, 0.42, 40]} /><meshBasicMaterial color="#FFFFFF" transparent opacity={height} side={THREE.DoubleSide} /></mesh>
+          </>
+        )}
       </group>
-      {height > 0 && (
-        <group>
-          <mesh position={foot.clone().multiplyScalar(0.5 * grow)} quaternion={q} scale={[1, grow, 1]}>
-            <cylinderGeometry args={[0.05, 0.05, d0, 12]} />
-            <meshBasicMaterial color="#FFFFFF" transparent opacity={height} />
-          </mesh>
-          <mesh position={[0, 0, 0]}><sphereGeometry args={[0.16, 20, 14]} /><meshBasicMaterial color="#FFFFFF" transparent opacity={height} /></mesh>
-          <mesh position={foot} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.3, 0.42, 40]} /><meshBasicMaterial color="#FFFFFF" transparent opacity={height} side={THREE.DoubleSide} /></mesh>
-        </group>
-      )}
     </>
   );
 };
 
-const Ego: React.FC<{pl: number[] | null; opacity: number}> = ({pl, opacity}) => {
-  const y = groundY(pl, 0, -1.6);
-  return (
-    <group position={[0, y + 0.78, 1.7]}>
+const EgoCar: React.FC<{ego: EgoPose; opacity: number}> = ({ego, opacity}) => (
+  <group position={[ego.pos.x, ego.pos.y - ego.h, ego.pos.z]} rotation={[0, ego.yaw, 0]}>
+    <group position={[0, 0.78, 1.7]}>
       <mesh><boxGeometry args={[1.8, 1.25, 4.4]} /><meshBasicMaterial color="#0E1A24" transparent opacity={0.6 * opacity} depthWrite={false} /></mesh>
       <lineSegments><edgesGeometry args={[new THREE.BoxGeometry(1.8, 1.25, 4.4)]} /><lineBasicMaterial color={ROAD} transparent opacity={0.9 * opacity} /></lineSegments>
     </group>
-  );
-};
+  </group>
+);
 
 const EDGES = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
-const GTBox: React.FC<{g: GT; opacity: number}> = ({g, opacity}) => (
+// a human 3D label box, corners already in the world
+const GTBox: React.FC<{c: THREE.Vector3[]; opacity: number}> = ({c, opacity}) => (
   <group>
     {EDGES.map(([i, j], e) => {
-      const a = new THREE.Vector3(g.corners[i][0], -g.corners[i][1], -g.corners[i][2]);
-      const b = new THREE.Vector3(g.corners[j][0], -g.corners[j][1], -g.corners[j][2]);
+      const a = c[i], b = c[j];
       const len = a.distanceTo(b);
       const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
       return (
@@ -293,13 +343,13 @@ const GTBox: React.FC<{g: GT; opacity: number}> = ({g, opacity}) => (
   </group>
 );
 
-// our answer for one car: a glowing pin standing on the road plane at the estimated centre
-const Pin: React.FC<{x: number; z: number; y: number; color: string; drop: number; text: string | null; big: boolean}> = ({x, z, y, color, drop, text, big}) => {
+// our answer for one car: a glowing pin standing on the road plane at the estimated centre (p in the world)
+type PinData = {track: number; p: THREE.Vector3; dist: number; color: string; drop: number; text: string | null; big: boolean;
+  ls: number; cx: number; trail: THREE.Vector3[] | null};
+const Pin: React.FC<{d: PinData}> = ({d: {p, color, drop, text, big, ls, cx}}) => {
   const lift = (1 - drop) * 7;
-  const dist = Math.hypot(x, z);
-  const ls = 1.0 + dist * 0.06;
   return (
-    <group position={[x, y + lift, -z]}>
+    <group position={[p.x, p.y + lift, p.z]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
         <ringGeometry args={[big ? 0.55 : 0.28, big ? 0.85 : 0.42, 40]} />
         <meshBasicMaterial color={color} transparent opacity={drop} side={THREE.DoubleSide} />
@@ -307,7 +357,7 @@ const Pin: React.FC<{x: number; z: number; y: number; color: string; drop: numbe
       <mesh position={[0, 1.0, 0]}><cylinderGeometry args={[0.07, 0.07, 2.0, 10]} /><meshBasicMaterial color={color} transparent opacity={drop} /></mesh>
       <mesh position={[0, 2.05, 0]}><sphereGeometry args={[0.2, 16, 12]} /><meshBasicMaterial color={color} transparent opacity={drop} /></mesh>
       {text && (
-        <sprite position={[0, 2.6 + ls * 0.3, 0]} scale={[ls * 5, ls, 1]}>
+        <sprite position={[0, 2.6 + ls * 0.3, 0]} scale={[ls * 5, ls, 1]} center={new THREE.Vector2(cx, 0.5)}>
           <spriteMaterial map={label(text, color)} transparent opacity={drop} depthTest={false} />
         </sprite>
       )}
@@ -318,13 +368,45 @@ const Pin: React.FC<{x: number; z: number; y: number; color: string; drop: numbe
 const colorOf = (cls: string) => (cls === 'person' ? PERSON : CAR);
 const isCar = (cls: string) => cls === 'car' || cls === 'truck' || cls === 'bus';
 
-const World: React.FC<{a: Assets; s: number; cam: Cam; aspect: number; vh: number}> = ({a, s, cam, aspect, vh}) => {
+// labels, nearest car first: a label that would cover a nearer one is hidden, one at the frame edge slides inside
+function placeLabels(pins: PinData[], cam: Cam, aspect: number, yoff: number, vfov: number, proj: number, vw: number, vh: number) {
+  const pc = new THREE.PerspectiveCamera(vfov, aspect, 0.1, 400);
+  pc.position.copy(cam.pos); pc.lookAt(cam.look); pc.updateMatrixWorld(); shiftView(pc, aspect, yoff);
+  const kept: number[][] = [];
+  const M = 14, GAP = 6;
+  for (const d of [...pins].sort((x, y) => x.dist - y.dist)) {
+    if (!d.text) continue;
+    const anchor = d.p.clone().add(new THREE.Vector3(0, 2.6 + d.ls * 0.3, 0));
+    const zc = -anchor.clone().applyMatrix4(pc.matrixWorldInverse).z;
+    if (zc < 0.5) { d.text = null; continue; }
+    const n = anchor.clone().project(pc);
+    const px = ((n.x + 1) / 2) * vw, py = ((1 - n.y) / 2) * vh;
+    const sw = (d.ls * 5 * proj) / zc, sh = (d.ls * proj) / zc;
+    label(d.text, d.color);
+    const bw = sw * (labelFrac.get(d.text + d.color) ?? 1), bh = sh * 0.75;
+    let x0 = px - bw / 2, x1 = px + bw / 2;
+    const y0 = py - bh / 2, y1 = py + bh / 2;
+    const dx = x1 > vw - M ? vw - M - x1 : x0 < M ? M - x0 : 0;
+    x0 += dx; x1 += dx;
+    if (y0 < 0 || y1 > vh || bw > vw - 2 * M || kept.some(([a0, b0, a1, b1]) => x0 < a1 + GAP && x1 > a0 - GAP && y0 < b1 + GAP && y1 > b0 - GAP)) {
+      d.text = null;
+      continue;
+    }
+    kept.push([x0, y0, x1, y1]);
+    d.cx = 0.5 - dx / sw;
+  }
+}
+
+const World: React.FC<{a: Assets; s: number; cam: Cam; ego: EgoPose; aspect: number; vw: number; vh: number; yshift: number}> = ({a, s, cam, ego, aspect, vw, vh, yshift}) => {
   const kf = kAt(s);
   const k = Math.floor(kf);
+  const k1 = Math.min(NF - 1, k + 1);
   const fr = D.frames[k];
-  const nx = D.frames[Math.min(NF - 1, k + 1)];
+  const nx = D.frames[k1];
   const al = kf - k;
-  const proj = vh / 2 / Math.tan((vfovOf(cam.hfov, aspect) * Math.PI) / 360);
+  const vfov = Math.min(100, vfovOf(cam.hfov, aspect));
+  const proj = vh / 2 / Math.tan((vfov * Math.PI) / 360);
+  const yoff = yshift * ramp(s, TL.lift, TL.road, INOUT);
   const dim = 1 - 0.62 * win(s, TL.res, TL.end + 1, 0.6);
   const cloudOp = ramp(s, TL.lift, TL.lift + 0.15) * dim * (1 - 0.62 * win(s, TL.proof + 0.2, TL.run + 0.8, 0.8));
   const grid = (ramp(s, TL.road, TL.road + 0.8) * (1 - 0.55 * ramp(s, TL.pins, TL.pins + 1))) * dim;
@@ -334,38 +416,62 @@ const World: React.FC<{a: Assets; s: number; cam: Cam; aspect: number; vh: numbe
   const reveal = 80 * ramp(s, TL.proof, TL.proof + 2.2, INOUT);
   const gtOp = win(s, TL.proof + 1.6, TL.run + 1.2) * 0.95;
   const running = s >= TL.run;
+  // pins: our ground position of every car, moved smoothly in the world between two drive frames
+  const pins: PinData[] = [];
+  if (pinsOn) fr.objects.filter((o) => isCar(o.cls) || o.cls === 'person').forEach((o, i) => {
+    const [x, z] = o.c.hybrid;
+    if (z > 75) return;
+    const p = onGround(k, x, z);
+    let dist = Math.hypot(x, z);
+    const o2 = k1 !== k ? nx.objects.find((q) => q.track === o.track) : undefined;
+    if (o2) {
+      const [x2, z2] = o2.c.hybrid;
+      p.lerp(onGround(k1, x2, z2), al);
+      dist += (Math.hypot(x2, z2) - dist) * al;
+    }
+    const [first, last] = SPAN.get(o.track)!;
+    const born = first > 0 ? ramp(kf, first, first + 3) : 1;
+    const gone = last < NF - 1 && !o2 ? 1 - ramp(kf, last, last + 1, Easing.linear) : 1;
+    const drop = (running ? 1 : ramp(s, TL.pins + 0.12 * i, TL.pins + 0.7 + 0.12 * i)) * born * gone;
+    const sp = o.kmh;
+    const moving = running && sp && sp.hybrid !== undefined && sp.gt !== undefined && (sp.gt > 5 || sp.hybrid > 5);
+    const text = s >= TL.res ? null : moving ? `${Math.round(sp!.hybrid)} km/h · true ${Math.round(sp!.gt)}` : (z < 45 ? `${Math.round(dist)} m` : null);
+    const trail = moving && o.trail.length > 2 ? o.trail.map(([tx, tz]) => onGround(k, tx, tz).add(new THREE.Vector3(0, 0.06, 0))) : null;
+    pins.push({track: o.track, p, dist, color: colorOf(o.cls), drop: drop * dim, text, big: isCar(o.cls), ls: 1.0 + dist * 0.06, cx: 0.5, trail});
+  });
+  placeLabels(pins, cam, aspect, yoff, vfov, proj, vw, vh);
+  // human 3D label boxes, moved smoothly in the world like the pins
+  const gts = gtOp > 0 ? fr.gt.map((g) => {
+    const g2 = k1 !== k ? nx.gt.find((q) => q.tid === g.tid) : undefined;
+    const c = g.corners.map((q, i) => {
+      const v = v3(q[0], q[1], q[2]).applyMatrix4(T[k]);
+      return g2 ? v.lerp(v3(g2.corners[i][0], g2.corners[i][1], g2.corners[i][2]).applyMatrix4(T[k1]), al) : v;
+    });
+    return {tid: g.tid, z: g.centre[2], c};
+  }) : [];
   return (
     <>
       <color attach="background" args={[BG]} />
       <fog attach="fog" args={[BG, 60, 130]} />
       <ambientLight intensity={0.7} />
       <directionalLight position={[10, 25, 15]} intensity={1.2} />
-      <Rig cam={cam} aspect={aspect} />
-      {s >= TL.lift && <Cloud a={a} k={k} opacity={cloudOp * (1 - 0.25 * ramp(s, TL.run, TL.run + 1.5))} proj={proj}
-        far={70 - 20 * ramp(s, TL.run, TL.run + 1.5)} top={4.5 - 1.5 * ramp(s, TL.run, TL.run + 1.5)} />}
-      {s >= TL.road && <Road pl={fr.plane} grid={grid} height={height} s={s} />}
-      {s >= TL.lift + 1.2 && s < TL.pins + 1.5 && <Ego pl={fr.plane} opacity={win(s, TL.lift + 1.2, TL.pins + 1.5, 0.8)} />}
-      {lidarOp > 0 && <Lidar a={a} k={k} reveal={reveal} opacity={lidarOp} proj={proj} />}
-      {gtOp > 0 && fr.gt.map((g) => <GTBox key={g.tid} g={g} opacity={gtOp * ramp(s, TL.proof + 1.6 + (g.centre[2] / 40), TL.proof + 2.2 + g.centre[2] / 40)} />)}
-      {pinsOn && fr.objects.filter((o) => isCar(o.cls) || o.cls === 'person').map((o, i) => {
-        const o2 = nx.objects.find((q) => q.track === o.track);
-        const [x1, z1] = o.c.hybrid;
-        const [x, z] = running && o2 ? [x1 + (o2.c.hybrid[0] - x1) * al, z1 + (o2.c.hybrid[1] - z1) * al] : [x1, z1];
-        if (z > 75) return null;
-        const drop = running ? 1 : ramp(s, TL.pins + 0.12 * i, TL.pins + 0.7 + 0.12 * i);
-        const sp = o.kmh;
-        const moving = running && sp && sp.hybrid !== undefined && sp.gt !== undefined && (sp.gt > 5 || sp.hybrid > 5);
-        const text = moving ? `${Math.round(sp!.hybrid)} km/h · true ${Math.round(sp!.gt)}` : (z < 45 ? `${Math.round(Math.hypot(x, z))} m` : null);
-        const trail = moving && o.trail.length > 2
-          ? o.trail.map(([tx, tz]) => new THREE.Vector3(tx, groundY(fr.plane, tx, tz) + 0.06, -tz)) : null;
-        return (
-          <group key={o.track}>
-            <Pin x={x} z={z} y={groundY(fr.plane, x, z)} color={colorOf(o.cls)} drop={drop * dim} text={s < TL.res ? text : null} big={isCar(o.cls)} />
-            {trail && <primitive object={new THREE.Line(new THREE.BufferGeometry().setFromPoints(trail),
-              new THREE.LineBasicMaterial({color: colorOf(o.cls), transparent: true, opacity: 0.85 * dim}))} />}
-          </group>
-        );
-      })}
+      <Rig cam={cam} aspect={aspect} yoff={yoff} />
+      {/* this frame's depth cloud and laser scan, placed in the world by the car's pose */}
+      <group position={TP[k].p} quaternion={TP[k].q}>
+        {s >= TL.lift && <Cloud a={a} k={k} opacity={cloudOp * (1 - 0.25 * ramp(s, TL.run, TL.run + 1.5))} proj={proj}
+          far={70 - 20 * ramp(s, TL.run, TL.run + 1.5)} top={4.5 - 1.5 * ramp(s, TL.run, TL.run + 1.5)} />}
+        {lidarOp > 0 && <Lidar a={a} k={k} reveal={reveal} opacity={lidarOp} proj={proj} />}
+      </group>
+      {s >= TL.road && <Road ego={ego} grid={grid} height={height} s={s} />}
+      {s >= TL.lift + 1.2 && s < TL.pins + 1.5 && <EgoCar ego={ego} opacity={win(s, TL.lift + 1.2, TL.pins + 1.5, 0.8)} />}
+      {gts.map((g) => <GTBox key={g.tid} c={g.c} opacity={gtOp * ramp(s, TL.proof + 1.6 + g.z / 40, TL.proof + 2.2 + g.z / 40)} />)}
+      {pins.map((d) => (
+        <group key={d.track}>
+          <Pin d={d} />
+          {d.trail && <primitive object={new THREE.Line(new THREE.BufferGeometry().setFromPoints(d.trail),
+            new THREE.LineBasicMaterial({color: d.color, transparent: true, opacity: 0.85 * dim}))} />}
+        </group>
+      ))}
     </>
   );
 };
@@ -394,8 +500,10 @@ export const M3D: React.FC = () => {
   const textZone = tall ? 470 : 0;
   const vh = H - stripH - textZone;
   const aspect = W / vh;
-  const k = Math.floor(kAt(s));
-  const cam = camAt(s);
+  const kf = kAt(s);
+  const k = Math.floor(kf);
+  const ego = egoAt(kf);
+  const cam = toWorld(camAt(s), ego);
   const M = 60;  // side margin
   const big = tall ? 112 : 96;
   const bottom = tall ? 120 : 70;
@@ -406,14 +514,14 @@ export const M3D: React.FC = () => {
       <div style={{position: 'absolute', left: 0, top: 0, width: W, height: stripH, opacity: stripDim}}>
         <Img src={staticFile(`seg/${pad(k)}.jpg`)} style={{width: W, height: stripH, display: 'block'}} />
         <div style={{position: 'absolute', left: 16, bottom: 12, fontFamily: MONO, fontSize: 19, color: '#fff', background: 'rgba(5,7,12,0.7)', padding: '4px 10px', borderRadius: 6}}>
-          {s < TL.lift ? 'CAMERA · YOLO26x-seg · TensorRT FP16' : s < TL.run ? 'TIME FROZEN · FRAME 330' : 'CAMERA · KITTI drive 0009 (test)'}
+          {s < TL.lift ? 'CAMERA · YOLO26x-seg · TensorRT FP16' : 'CAMERA · KITTI drive 0009 (test)'}
         </div>
       </div>
       {/* the 3D world */}
       <div style={{position: 'absolute', left: 0, top: stripH, width: W, height: vh}}>
         {a && (
           <ThreeCanvas width={W} height={vh} camera={{fov: 60, near: 0.1, far: 400, position: [0, 0, 0]}} gl={{antialias: true}}>
-            <World a={a} s={s} cam={cam} aspect={aspect} vh={vh} />
+            <World a={a} s={s} cam={cam} ego={ego} aspect={aspect} vw={W} vh={vh} yshift={tall ? 0 : 0.14} />
           </ThreeCanvas>
         )}
         <div style={{position: 'absolute', left: 0, right: 0, bottom: 0, height: tall ? 160 : 420, background: `linear-gradient(transparent, ${BG}${tall ? 'FF' : 'E6'} ${tall ? 100 : 70}%)`,
@@ -428,7 +536,7 @@ export const M3D: React.FC = () => {
       </div>
       <div style={{position: 'absolute', left: M, right: M, bottom}}>
         <Beat s={s} at={TL.lift + 0.6} until={TL.road} tag="YOLO26x-depth · TensorRT FP16" size={big}>The frame,|lifted into 3D.</Beat>
-        <Beat s={s} at={TL.road + 0.2} until={TL.pins} tag="road plane from the depth map" size={big} sub={`camera height ${(D.frames[FREEZE].plane?.[3] ?? 0).toFixed(2)} m · true ${D.cam_h_true.toFixed(2)} m`}>It finds|the road itself.</Beat>
+        <Beat s={s} at={TL.road + 0.2} until={TL.pins} tag="road plane from the depth map" size={big} sub={`camera height ${ego.h.toFixed(2)} m · true ${D.cam_h_true.toFixed(2)} m`}>It finds|the road itself.</Beat>
         <Beat s={s} at={TL.pins + 0.2} until={TL.proof} tag="ground position of every car" size={big}>Each car:|a point in metres.</Beat>
         <Beat s={s} at={TL.proof + 0.3} until={TL.run} tag="white: LiDAR laser · boxes: human 3D labels" size={big}>Checked against|a laser scanner.</Beat>
         <Beat s={s} at={TL.run + 1.6} until={TL.res} tag="km/h from 3 s of positions · true = labels" size={big}>Speed from|the same points.</Beat>

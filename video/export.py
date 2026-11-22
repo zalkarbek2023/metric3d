@@ -2,7 +2,7 @@
 tracker, RANSAC seed), so track IDs, boxes and road planes equal the test CSV - checked against it row by row.
 Centres and speeds come from the same score3d functions that produced the test numbers.
 
-usage: python export.py --drive 0009 --f0 300 --f1 425 --csv data/test_letterbox.csv --out vid
+usage: python export.py --drive 0009 --f0 230 --f1 425 --csv data/test_letterbox.csv --out vid
 writes vid/img/NNN.jpg (photo), vid/seg/NNN.jpg (photo + masks), vid/depth.bin (uint16 cm, grid per frame),
        vid/lidar.bin (int16 cm xyz, camera-2 frame), vid/scene.json (objects, GT boxes, planes, speeds, trails)
 """
@@ -16,7 +16,7 @@ from run3d import COCO, match, road_plane, depth_map
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--drive", default="0009")
-ap.add_argument("--f0", type=int, default=300)
+ap.add_argument("--f0", type=int, default=230)
 ap.add_argument("--f1", type=int, default=425)
 ap.add_argument("--csv", default="data/test_letterbox.csv")
 ap.add_argument("--out", default="vid")
@@ -142,6 +142,9 @@ for fr in frames_out:
 # ego motion in the first frame's camera coordinates (for a world-fixed view if wanted)
 inv0 = np.linalg.inv(poses[a.f0])
 ego = [np.round((inv0 @ poses[f])[:3, 3], 2).tolist() for f in range(a.f0, a.f1 + 1)]
+# full pose per exported frame: camera-2 of that frame -> camera-2 of frame f0 (row-major 3x4), for a world-fixed 3D view
+for fr in frames_out:
+    fr["pose"] = np.round((inv0 @ poses[fr["frame"]])[:3].ravel(), 4).tolist()
 
 D = np.stack(depth_out)
 D.tofile(os.path.join(a.out, "depth.bin"))
