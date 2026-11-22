@@ -18,6 +18,8 @@ get() {  # resume after stalls: abort below 50 KB/s for 30 s, then continue from
 for n in $VAL $TEST; do
   d=2011_09_26_drive_$n
   [ -f kitti/2011_09_26/${d}_sync/tracklet_labels.xml ] || { get $base/$d/${d}_tracklets.zip && unzip -qo zips/${d}_tracklets.zip -d kitti && rm zips/${d}_tracklets.zip; }
+  # 0093's tracklets zip has no folders: the xml lands in kitti/ - move it into its drive folder
+  [ -f kitti/tracklet_labels.xml ] && mkdir -p kitti/2011_09_26/${d}_sync && mv kitti/tracklet_labels.xml kitti/2011_09_26/${d}_sync/
   if [ ! -d kitti/2011_09_26/${d}_sync/velodyne_points ]; then
     get $base/$d/${d}_sync.zip || continue
     unzip -qo zips/${d}_sync.zip "*/image_02/*" "*/velodyne_points/*" "*/oxts/*" -d kitti && rm zips/${d}_sync.zip
