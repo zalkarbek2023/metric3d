@@ -1,0 +1,4 @@
+Loading /home/zalkar/flatreal/engines/yolo26x-depth-fp16.engine for TensorRT inference...
+[11/22/2026-19:07:22] [TRT] [I] Loaded engine size: 109 MiB
+[11/22/2026-19:07:22] [TRT] [I] [MemUsageChange] TensorRT-managed allocation in IExecutionContext creation: CPU +0, GPU +136, now: CPU 0, GPU 243 (MiB)
+wrote out/worst_test.jpg 12

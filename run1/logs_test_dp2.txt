@@ -1,0 +1,14 @@
+/home/zalkar/metric3d/dp2_kitti.py:40: RuntimeWarning: overflow encountered in cast
+  np.save(p, d.astype(np.float16))
+0009: 447 frames -> data/dp2/0009
+0013: 144 frames -> data/dp2/0013
+0023: 474 frames -> data/dp2/0023
+0027: 188 frames -> data/dp2/0027
+0036: 803 frames -> data/dp2/0036
+0046: 125 frames -> data/dp2/0046
+0052: 78 frames -> data/dp2/0052
+0056: 294 frames -> data/dp2/0056
+0064: 570 frames -> data/dp2/0064
+0084: 383 frames -> data/dp2/0084
+0093: 433 frames -> data/dp2/0093
+done data/dp2

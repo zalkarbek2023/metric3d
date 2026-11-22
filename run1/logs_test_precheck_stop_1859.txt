@@ -1,0 +1,12 @@
+жек., 22-Ноя 2026 ж, 18:59:06 +06
+4f5d3c2e9cdf466d24a02396ed7bdabbcf45df33b35ebe70540d9c9e2e501fb6  kitti.py
+d55adb424b29ee5bcafdb5ac18a1aaed6dde6a4e0e3d2e5944b0a38d4485f94d  run3d.py
+ce3f11b6c12d8781956c121b2e9a4ed420074aed6a2d5275df07b16d68715bcb  score3d.py
+9ab96a3d52ea642764fcc11256604270454732f988d0137fbd7f1dd508e6b644  dp2_kitti.py
+8b300680e4facabc7ee9bea84d715d78ebb3a35e7b6205cf09956484df7c054f  calib_scale.py
+927dab2513cd1b9d9dcdbce29341119bf34e8277f19ef6480c715c21a1614fb6  worst3d.py
+c9019d09d66e77ea738217b06cae8f7239c72e5eece87b1704e46cb1bef3f5aa  test_run.sh
+3d484f6c8eb20e26766c89451506e916b27fef42b568f7281e3a9c720e45b8af  data/val6_letterbox.csv
+8f315d3d5fc7afa2cb3a6df02d679f19fb60b1188ae27907c50efb37b6e373b4  /home/zalkar/flatreal/engines/yolo26x-seg-fp16.engine
+b17b4fd99f75b5d1822044681291c129f44a00ed42667ba98c9981cf553079db  /home/zalkar/flatreal/engines/yolo26x-depth-fp16.engine
+missing 0093 - stop

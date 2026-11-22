@@ -1,0 +1,13 @@
+Loading /home/zalkar/flatreal/engines/yolo26x-seg-fp16.engine for TensorRT inference...
+[11/22/2026-19:07:06] [TRT] [I] Loaded engine size: 122 MiB
+[11/22/2026-19:07:06] [TRT] [I] [MemUsageChange] TensorRT-managed allocation in IExecutionContext creation: CPU +0, GPU +94, now: CPU 0, GPU 215 (MiB)
+Traceback (most recent call last):
+  File "/home/zalkar/metric3d/run3d.py", line 195, in <module>
+    main()
+  File "/home/zalkar/metric3d/run3d.py", line 145, in main
+    pc, pv = kitti.velo(n, f, cal)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/zalkar/metric3d/kitti.py", line 59, in velo
+    p = np.fromfile(os.path.join(drive_dir(n), "velodyne_points", "data", f"{frame:010d}.bin"), np.float32).reshape(-1, 4)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/zalkar/metric3d/kitti/2011_09_26/2011_09_26_drive_0009_sync/velodyne_points/data/0000000177.bin'

@@ -1,0 +1,38 @@
+
+M1 surface distance - data/test_letterbox.csv (erosion 2 px, depth x0.989792)
+class   range m      n | depth: abs err m  abs rel    bias  d<1.25 | B0:  abs rel    bias | hybrid:  abs rel    bias
+car       0-10    3171 |      0.33     5.3%   -0.1%   97.6% |    11.6%   +8.8% |     7.1%   +4.7%
+car      10-20    4038 |      0.69     4.8%   -2.1%   94.5% |     7.5%   -0.3% |     4.6%   -0.1%
+car      20-40    5629 |      1.84     6.7%   -3.1%   92.9% |    11.0%   -4.4% |     6.5%   -3.5%
+car      40-80    1824 |      4.87    10.0%   -5.4%   81.5% |    12.5%   -5.8% |    11.2%   -7.1%
+car       0-80   14662 |      0.95     6.0%   -2.2%   93.0% |    10.3%   -0.5% |     6.4%   -1.1%
+person    0-10      24 |      0.89    11.4%  +11.4%  100.0% |    19.5%  +19.5% |     9.3%   +9.3%
+person   10-20      18 |      2.85    18.3%  +18.3%   72.2% |    10.4%  +10.4% |    11.7%  +11.7%
+person   20-40       7 |      5.88    23.7%  +23.7%   71.4% |     8.1%   +8.1% |     7.5%   +7.5%
+person    0-80      49 |      1.29    14.8%  +14.8%   85.7% |    11.5%  +11.5% |    10.2%  +10.2%
+
+M2 ground-plane centre error (m) - data/test_letterbox.csv (erosion 2 px, depth x0.989792); r_class = {'depth': {'car': 0.5, 'person': 0.0}, 'hybrid': {'car': 1.25, 'person': 0.0}, 'b0': {'car': 2.0, 'person': 0.0}}
+class   range m      n | depth:   med   p90 | hybrid:   med   p90 | b0:   med   p90
+car       0-10    2182 | depth:  0.87  1.61 | hybrid:  0.73  1.87 | b0:  1.79  4.39
+car      10-20    4238 | depth:  1.16  2.61 | hybrid:  0.65  1.95 | b0:  1.06  3.48
+car      20-40    6002 | depth:  2.09  5.71 | hybrid:  1.65  5.10 | b0:  2.50  9.83
+car      40-80    2759 | depth:  4.92 13.84 | hybrid:  5.38 14.22 | b0:  6.67 22.19
+car       0-80   15181 | depth:  1.53  6.34 | hybrid:  1.24  6.51 | b0:  2.03 10.12
+                        95% CI by GT track (523 tracks): depth [1.43, 1.65], hybrid [1.12, 1.37], b0 [1.84, 2.24], depth-b0 [-0.70, -0.32], hybrid-b0 [-0.96, -0.64]
+person    0-10      18 | depth:  1.05  1.27 | hybrid:  0.72  1.08 | b0:  1.51  1.92
+person   10-20      23 | depth:  2.05  4.59 | hybrid:  1.49  2.08 | b0:  1.16  2.29
+person   20-40       8 | depth:  5.50  6.56 | hybrid:  1.67  2.65 | b0:  1.89  2.46
+person    0-80      49 | depth:  1.42  5.09 | hybrid:  1.10  1.92 | b0:  1.53  2.21
+                        95% CI by GT track (4 tracks): depth [0.66, 3.32], hybrid [0.71, 1.27], b0 [1.01, 1.89], depth-b0 [-1.23, +2.31], hybrid-b0 [-1.18, +0.26]
+
+M3 speed (window 3 s, fit theilsen, detections in >= 80% of frames, GT within 40 m) - data/test_letterbox.csv (erosion 2 px, depth x0.989792)
+car: 5691 windows, 276 tracks, GT speed median 0.4 km/h, moving 31% (answering 'stopped' always: acc 69.4%)
+  depth   abs err median   1.8 km/h [95% CI 1.5-2.2], p90   7.3, bias  +1.5, moving/stopped acc 81.6% [77.5%-85.4%]
+  hybrid  abs err median   1.8 km/h [95% CI 1.5-2.1], p90   7.5, bias  +1.3, moving/stopped acc 82.6% [78.9%-86.3%]
+  b0      abs err median   3.0 km/h [95% CI 2.3-3.7], p90  10.7, bias  +2.5, moving/stopped acc 70.6% [65.1%-75.5%]
+  paired vs B0 (95% CI): err depth-b0 [-1.73, -0.65], acc depth-b0 [+0.07, +0.15], err hybrid-b0 [-1.77, -0.70], acc hybrid-b0 [+0.08, +0.16]
+person: 16 windows, 1 tracks, GT speed median 4.3 km/h, moving 0% (answering 'stopped' always: acc 100.0%)
+  depth   abs err median   7.7 km/h [95% CI 7.7-7.7], p90   8.8, bias  +7.7, moving/stopped acc 0.0% [0.0%-0.0%]
+  hybrid  abs err median   0.6 km/h [95% CI 0.6-0.6], p90   1.7, bias  +0.6, moving/stopped acc 62.5% [62.5%-62.5%]
+  b0      abs err median   1.1 km/h [95% CI 1.1-1.1], p90   1.7, bias  +1.1, moving/stopped acc 25.0% [25.0%-25.0%]
+  paired vs B0 (95% CI): err depth-b0 [+6.57, +6.57], acc depth-b0 [-0.25, -0.25], err hybrid-b0 [-0.50, -0.50], acc hybrid-b0 [+0.38, +0.38]
