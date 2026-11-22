@@ -55,8 +55,13 @@ def calib(root=ROOT):
 
 
 def velo(n, frame, cal):
-    """Velodyne points of one frame in camera-2 coordinates, only in front of the camera. (N, 3)"""
-    p = np.fromfile(os.path.join(drive_dir(n), "velodyne_points", "data", f"{frame:010d}.bin"), np.float32).reshape(-1, 4)
+    """Velodyne points of one frame in camera-2 coordinates, only in front of the camera. (N, 3)
+    A missing scan (0009 frames 177-180 do not exist in KITTI raw) gives no points: the frame keeps its detections and
+    tracklet GT, M1 skips it (lidar_n 0 < 10)."""
+    f = os.path.join(drive_dir(n), "velodyne_points", "data", f"{frame:010d}.bin")
+    if not os.path.exists(f):
+        return np.zeros((0, 3)), np.zeros((0, 3))
+    p = np.fromfile(f, np.float32).reshape(-1, 4)
     q = (cal["velo_cam2"] @ np.c_[p[:, :3], np.ones(len(p))].T).T[:, :3]
     return q[q[:, 2] > 0.5], p[q[:, 2] > 0.5, :3]  # (cam2 points, same points in velo frame)
 
